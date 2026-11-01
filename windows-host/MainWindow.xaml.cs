@@ -12,7 +12,12 @@ public partial class MainWindow : Window
     public MainWindow()
     {
         InitializeComponent();
-        _server.StatusChanged += message => Dispatcher.Invoke(() => StatusText.Text = message);
+        _server.StatusChanged += message => Dispatcher.Invoke(() =>
+        {
+            StatusText.Text = message;
+            PreviewButton.IsEnabled = _server.HasPairedClient;
+            if (!_server.DesktopPreviewEnabled) PreviewButton.Content = "允許桌面預覽";
+        });
         Closed += async (_, _) => await _server.DisposeAsync();
     }
 
@@ -33,13 +38,23 @@ public partial class MainWindow : Window
         }
     }
 
+    private void PreviewButton_Click(object sender, RoutedEventArgs e)
+    {
+        var enable = !_server.DesktopPreviewEnabled;
+        _server.SetDesktopPreviewEnabled(enable);
+        PreviewButton.Content = enable ? "停止桌面預覽" : "允許桌面預覽";
+    }
+
     private async void StopButton_Click(object sender, RoutedEventArgs e)
     {
         StopButton.IsEnabled = false;
+        _server.SetDesktopPreviewEnabled(false);
         await _server.StopAsync();
         PairCodeText.Text = "------";
         AddressText.Text = "主機位址：尚未啟動";
         StartButton.IsEnabled = true;
+        PreviewButton.IsEnabled = false;
+        PreviewButton.Content = "允許桌面預覽";
     }
 
     private static string GetLocalIPv4()

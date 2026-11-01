@@ -1,4 +1,7 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:http/http.dart' as http;
 
 void main() => runApp(const RemoteLinkApp());
 
@@ -6,37 +9,61 @@ class RemoteLinkApp extends StatelessWidget {
   const RemoteLinkApp({super.key});
 
   @override
-  Widget build(BuildContext context) {
-    return MaterialApp(
-      title: 'RemoteLink',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        brightness: Brightness.dark,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF36B89A), brightness: Brightness.dark),
-        scaffoldBackgroundColor: const Color(0xFF101827),
-        useMaterial3: true,
-      ),
-      home: const PairScreen(),
-    );
-  }
+  Widget build(BuildContext context) => MaterialApp(
+        title: 'RemoteLink',
+        debugShowCheckedModeBanner: false,
+        theme: ThemeData(
+          brightness: Brightness.dark,
+          colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF36B89A), brightness: Brightness.dark),
+          scaffoldBackgroundColor: const Color(0xFF101827),
+          useMaterial3: true,
+        ),
+        home: const PairScreen(),
+      );
 }
 
 class PairScreen extends StatefulWidget {
   const PairScreen({super.key});
-
   @override
   State<PairScreen> createState() => _PairScreenState();
 }
 
 class _PairScreenState extends State<PairScreen> {
+  static const _storage = FlutterSecureStorage();
+  final _hostController = TextEditingController();
   final _codeController = TextEditingController();
-  String _message = '輸入 Windows 主機顯示的配對碼以開始配對。';
+  String _message = '請先在 Windows 主機啟動配對服務，再輸入主機 IP 與配對碼。';
   bool _busy = false;
+  bool _paired = false;
+  String? _token;
+  String? _baseUrl;
 
   @override
-  void dispose() {
-    _codeController.dispose();
-    super.dispose();
+  void initState() {
+    super.initState();
+    _restoreSession();
+  }
+
+  Future<void> _restoreSession() async {
+    final host = await _storage.read(key: 'host');
+    final token = await _storage.read(key: 'token');
+    if (!mounted) return;
+    if (host != null && token != null) {
+      setState(() {
+        _hostController.text = host;
+        _baseUrl = _normalizeHost(host);
+        _token = token;
+        _paired = true;
+        _message = '已保存配對資訊。按「檢查連線」驗證主機是否仍在線。';
+      });
+    }
+  }
+
+  String _normalizeHost(String input) {
+    var value = input.trim();
+    if (!value.startsWith('http://') && !value.startsWith('https://')) value = 'http://$value';
+    if (!value.contains(':', value.indexOf('://') + 3)) value = '$value:43821';
+    return value.endsWith('/') ? value.substring(0, value.length - 1) : value;
   }
 
   Future<void> _pair() async {
@@ -45,67 +72,116 @@ class _PairScreenState extends State<PairScreen> {
       setState(() => _message = '請輸入 6 位數字配對碼。');
       return;
     }
+    setState(() { _busy = true; _message = '正在向 Windows 主機驗證配對碼…'; });
+    final base = _normalizeHost(_hostController.text);
+    try {
+      final response = await http.post(
+        Uri.parse('$base/pair'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'code': code, 'clientName': 'Xiaomi 15 Pro'}),
+      ).timeout(const Duration(seconds: 8));
+      if (response.statusCode == 200) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        final token = data['token'] as String;
+        await _storage.write(key: 'host', value: _hostController.text.trim());
+        await _storage.write(key: 'token', value: token);
+        if (!mounted) return;
+        setState(() {
+          _baseUrl = base; _token = token; _paired = true;
+          _message = '配對成功，已取得此主機的工作階段授權。';
+        });
+      } else {
+        final data = jsonDecode(response.body);
+        setState(() => _message = '配對失敗（HTTP ${response.statusCode}）：${data is Map ? data['message'] ?? data['error'] ?? '請確認主機位址與配對碼' : '請確認主機位址與配對碼'}');
+      }
+    } catch (e) {
+      setState(() => _message = '無法連接主機：$e\n請確認手機與電腦位於同一 Wi-Fi，並允許 Windows 防火牆通過 TCP 43821。');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _checkSession() async {
+    if (_baseUrl == null || _token == null) return;
+    setState(() { _busy = true; _message = '正在檢查授權…'; });
+    try {
+      final r = await http.get(Uri.parse('$_baseUrl/session'), headers: {'Authorization': 'Bearer $_token'}).timeout(const Duration(seconds: 8));
+      setState(() => _message = r.statusCode == 200 ? '主機在線，配對授權有效。' : '授權已失效或主機已停止（HTTP ${r.statusCode}）。');
+    } catch (e) {
+      setState(() => _message = '檢查失敗：$e');
+    } finally {
+      if (mounted) setState(() => _busy = false);
+    }
+  }
+
+  Future<void> _disconnect() async {
+    if (_baseUrl != null && _token != null) {
+      try {
+        await http.post(Uri.parse('$_baseUrl/session/close'), headers: {'Authorization': 'Bearer $_token'}).timeout(const Duration(seconds: 5));
+      } catch (_) {}
+    }
+    await _storage.delete(key: 'token');
+    await _storage.delete(key: 'host');
+    if (!mounted) return;
     setState(() {
-      _busy = true;
-      _message = '配對服務尚未接通。此畫面目前僅供 UI 與 APK 建置驗證。';
+      _paired = false; _token = null; _baseUrl = null;
+      _message = '已清除此裝置保存的配對授權。';
     });
-    await Future<void>.delayed(const Duration(milliseconds: 350));
-    if (mounted) setState(() => _busy = false);
   }
 
   @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: const Text('RemoteLink')),
-      body: SafeArea(
-        child: Center(
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 440),
-            child: Padding(
-              padding: const EdgeInsets.all(24),
-              child: Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  const Icon(Icons.desktop_windows_rounded, size: 68, color: Color(0xFF71D5B3)),
-                  const SizedBox(height: 22),
-                  const Text('連接 Windows 主機', textAlign: TextAlign.center,
-                      style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
-                  const SizedBox(height: 10),
-                  const Text('Windows 11 · Xiaomi 15 Pro', textAlign: TextAlign.center,
-                      style: TextStyle(color: Colors.white60)),
-                  const SizedBox(height: 30),
-                  TextField(
-                    controller: _codeController,
-                    keyboardType: TextInputType.number,
-                    maxLength: 6,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(fontSize: 28, letterSpacing: 8),
-                    decoration: const InputDecoration(
-                      labelText: '6 位數配對碼',
-                      border: OutlineInputBorder(),
-                      counterText: '',
+  void dispose() {
+    _hostController.dispose();
+    _codeController.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('RemoteLink')),
+        body: SafeArea(
+          child: Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 460),
+              child: SingleChildScrollView(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Icon(Icons.desktop_windows_rounded, size: 68, color: Color(0xFF71D5B3)),
+                    const SizedBox(height: 18),
+                    const Text('連接 Windows 主機', textAlign: TextAlign.center, style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold)),
+                    const SizedBox(height: 8),
+                    const Text('Windows 11 · Xiaomi 15 Pro', textAlign: TextAlign.center, style: TextStyle(color: Colors.white60)),
+                    const SizedBox(height: 28),
+                    TextField(controller: _hostController, keyboardType: TextInputType.url, decoration: const InputDecoration(labelText: 'Windows 主機 IP（例如 192.168.1.20）', border: OutlineInputBorder())),
+                    const SizedBox(height: 14),
+                    if (!_paired) TextField(
+                      controller: _codeController,
+                      keyboardType: TextInputType.number,
+                      maxLength: 6,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(fontSize: 28, letterSpacing: 8),
+                      decoration: const InputDecoration(labelText: '6 位數配對碼', border: OutlineInputBorder(), counterText: ''),
                     ),
-                  ),
-                  const SizedBox(height: 16),
-                  FilledButton(
-                    onPressed: _busy ? null : _pair,
-                    child: Padding(
-                      padding: const EdgeInsets.all(13),
-                      child: _busy
-                          ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2))
-                          : const Text('配對主機'),
+                    const SizedBox(height: 16),
+                    FilledButton(
+                      onPressed: _busy ? null : (_paired ? _checkSession : _pair),
+                      child: Padding(
+                        padding: const EdgeInsets.all(13),
+                        child: _busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text(_paired ? '檢查連線' : '配對主機'),
+                      ),
                     ),
-                  ),
-                  const SizedBox(height: 18),
-                  Text(_message, textAlign: TextAlign.center,
-                      style: const TextStyle(color: Colors.white70, height: 1.5)),
-                ],
+                    if (_paired) OutlinedButton(onPressed: _busy ? null : _disconnect, child: const Text('解除配對')),
+                    const SizedBox(height: 18),
+                    Text(_message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, height: 1.5)),
+                    const SizedBox(height: 20),
+                    const Text('目前完成的是區域網路配對與授權驗證；尚未提供遠端桌面串流或控制。', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 12)),
+                  ],
+                ),
               ),
             ),
           ),
         ),
-      ),
-    );
-  }
+      );
 }

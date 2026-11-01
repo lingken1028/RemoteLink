@@ -1,8 +1,8 @@
 <Window x:Class="RemoteLink.Host.MainWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="RemoteLink Host" Height="520" Width="760"
-        MinHeight="460" MinWidth="680" Background="#101827"
+        Title="RemoteLink Host" Height="560" Width="780"
+        MinHeight="500" MinWidth="700" Background="#101827"
         WindowStartupLocation="CenterScreen">
     <Grid Margin="28">
         <Grid.RowDefinitions>
@@ -15,10 +15,11 @@
             <TextBlock Text="RemoteLink" Foreground="White" FontSize="30" FontWeight="Bold"/>
             <TextBlock Text="Windows host · Windows 11" Foreground="#9CAEC4" FontSize="14" Margin="0,4,0,0"/>
         </StackPanel>
-        <Border Grid.Row="1" Background="#1D2A3D" CornerRadius="10" Padding="16" Margin="0,24,0,18">
+        <Border Grid.Row="1" Background="#1D2A3D" CornerRadius="10" Padding="16" Margin="0,20,0,18">
             <StackPanel>
                 <TextBlock Text="主機狀態" Foreground="#AFC1D8" FontSize="13"/>
-                <TextBlock x:Name="StatusText" Text="尚未連線" Foreground="White" FontSize="20" FontWeight="SemiBold" Margin="0,5,0,0"/>
+                <TextBlock x:Name="StatusText" Text="尚未啟動" Foreground="White" FontSize="20" FontWeight="SemiBold" Margin="0,5,0,0"/>
+                <TextBlock x:Name="AddressText" Text="主機位址：尚未啟動" Foreground="#AFC1D8" FontSize="13" Margin="0,8,0,0"/>
             </StackPanel>
         </Border>
         <Grid Grid.Row="2">
@@ -27,13 +28,15 @@
                 <RowDefinition Height="Auto"/>
                 <RowDefinition Height="*"/>
             </Grid.RowDefinitions>
-            <TextBlock Text="配對碼" Foreground="#AFC1D8" FontSize="13"/>
-            <TextBlock x:Name="PairCodeText" Grid.Row="1" Text="------" Foreground="#71D5B3" FontSize="38" FontWeight="Bold" Margin="0,5,0,16"/>
-            <TextBlock Grid.Row="2" TextWrapping="Wrap" Foreground="#C5D1DF" FontSize="14" LineHeight="23"
-                       Text="目前為 Windows Host 初始介面。此版本尚未啟動桌面擷取、WebRTC 串流或遠端輸入。請勿將此版本視為可遠端控制的正式產品。首次配對與每次遠端工作階段都應由使用者明確授權，並提供可見的停止控制。"/>
+            <TextBlock Text="一次性配對碼（5 分鐘有效）" Foreground="#AFC1D8" FontSize="13"/>
+            <TextBlock x:Name="PairCodeText" Grid.Row="1" Text="------" Foreground="#71D5B3" FontSize="38" FontWeight="Bold" Margin="0,5,0,12"/>
+            <StackPanel Grid.Row="2">
+                <TextBlock Text="Android 端請輸入本機區域網路 IP 與配對碼。配對成功後，主機會顯示已連線狀態；停止主機會撤銷所有授權。" TextWrapping="Wrap" Foreground="#C5D1DF" FontSize="14" LineHeight="23"/>
+                <TextBlock Text="安全限制：目前僅提供區域網路配對 API，尚未提供桌面影像、滑鼠鍵盤控制或跨網路中繼。請勿將 TCP 43821 轉發到公網。" TextWrapping="Wrap" Foreground="#E8BE82" FontSize="13" LineHeight="21" Margin="0,12,0,0"/>
+            </StackPanel>
         </Grid>
         <DockPanel Grid.Row="3" LastChildFill="False">
-            <Button x:Name="StartButton" Content="啟動主機" Width="130" Height="40" Click="StartButton_Click"
+            <Button x:Name="StartButton" Content="啟動配對服務" Width="150" Height="40" Click="StartButton_Click"
                     Background="#267A68" Foreground="White" BorderThickness="0" FontSize="14"/>
             <Button x:Name="StopButton" Content="停止主機" Width="130" Height="40" Margin="12,0,0,0"
                     Click="StopButton_Click" Background="#873E4A" Foreground="White" BorderThickness="0" FontSize="14" IsEnabled="False"/>

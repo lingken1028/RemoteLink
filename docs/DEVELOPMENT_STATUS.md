@@ -15,7 +15,7 @@ Last checked: 2026-11-01
 - Bearer-token session validation and explicit session-close endpoint.
 - Android client performs real HTTP pairing, stores the session token with Android secure storage, validates sessions and requests disconnection.
 - Windows user can explicitly enable/stop desktop preview after a client has paired.
-- Authenticated `GET /desktop.jpg` endpoint captures the primary interactive desktop using Windows GDI, scales it to a maximum width of 1280 px and encodes JPEG.
+- Authenticated `GET /desktop.jpg` endpoint captures the primary interactive desktop using Windows GDI, scales it to a maximum width of 1280 px and encodes JPEG. The endpoint limits capture requests to at most one frame per 800 ms.
 - Android client polls the authenticated JPEG endpoint approximately once per second and displays the latest frame.
 - GitHub Actions builds Windows x64 and Android release artifacts.
 

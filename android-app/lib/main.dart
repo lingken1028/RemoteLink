@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -129,6 +130,13 @@ class _PairScreenState extends State<PairScreen> {
     });
   }
 
+  void _openPreview() {
+    if (_baseUrl == null || _token == null) return;
+    Navigator.of(context).push(MaterialPageRoute(
+      builder: (_) => DesktopPreviewPage(baseUrl: _baseUrl!, token: _token!),
+    ));
+  }
+
   @override
   void dispose() {
     _hostController.dispose();
@@ -172,16 +180,112 @@ class _PairScreenState extends State<PairScreen> {
                         child: _busy ? const SizedBox(height: 20, width: 20, child: CircularProgressIndicator(strokeWidth: 2)) : Text(_paired ? '檢查連線' : '配對主機'),
                       ),
                     ),
+                    if (_paired) OutlinedButton.icon(
+                      onPressed: _busy ? null : _openPreview,
+                      icon: const Icon(Icons.desktop_windows),
+                      label: const Text('查看 Windows 桌面'),
+                    ),
                     if (_paired) OutlinedButton(onPressed: _busy ? null : _disconnect, child: const Text('解除配對')),
                     const SizedBox(height: 18),
                     Text(_message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, height: 1.5)),
                     const SizedBox(height: 20),
-                    const Text('目前完成的是區域網路配對與授權驗證；尚未提供遠端桌面串流或控制。', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 12)),
+                    const Text('桌面預覽需先在 Windows 主機按「允許桌面預覽」。目前為區域網路 JPEG 預覽原型，尚未支援即時影音、滑鼠鍵盤控制或跨網路連線。', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 12)),
                   ],
                 ),
               ),
             ),
           ),
+        ),
+      );
+}
+
+class DesktopPreviewPage extends StatefulWidget {
+  const DesktopPreviewPage({super.key, required this.baseUrl, required this.token});
+  final String baseUrl;
+  final String token;
+
+  @override
+  State<DesktopPreviewPage> createState() => _DesktopPreviewPageState();
+}
+
+class _DesktopPreviewPageState extends State<DesktopPreviewPage> {
+  Timer? _timer;
+  Uint8List? _frame;
+  String _status = '正在連接桌面預覽…';
+  bool _loading = false;
+  DateTime? _lastFrame;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadFrame();
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) => _loadFrame());
+  }
+
+  Future<void> _loadFrame() async {
+    if (_loading || !mounted) return;
+    _loading = true;
+    try {
+      final response = await http.get(
+        Uri.parse('${widget.baseUrl}/desktop.jpg'),
+        headers: {'Authorization': 'Bearer ${widget.token}'},
+      ).timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200 && response.headers['content-type']?.contains('image/jpeg') == true) {
+        if (!mounted) return;
+        setState(() {
+          _frame = response.bodyBytes;
+          _lastFrame = DateTime.now();
+          _status = '已接收桌面畫面 · 原型約 1 FPS';
+        });
+      } else {
+        String message = 'HTTP ${response.statusCode}';
+        try {
+          final body = jsonDecode(response.body);
+          if (body is Map && body['message'] != null) message = body['message'].toString();
+        } catch (_) {}
+        if (mounted) setState(() => _status = message);
+      }
+    } catch (e) {
+      if (mounted) setState(() => _status = '影像接收失敗：$e');
+    } finally {
+      _loading = false;
+    }
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) => Scaffold(
+        appBar: AppBar(title: const Text('Windows 桌面預覽')),
+        body: Column(
+          children: [
+            Expanded(
+              child: Container(
+                width: double.infinity,
+                color: Colors.black,
+                alignment: Alignment.center,
+                child: _frame == null
+                    ? const CircularProgressIndicator()
+                    : Image.memory(_frame!, fit: BoxFit.contain, gaplessPlayback: true),
+              ),
+            ),
+            Padding(
+              padding: const EdgeInsets.all(14),
+              child: Column(
+                children: [
+                  Text(_status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+                  if (_lastFrame != null)
+                    Text('最後影格：${TimeOfDay.fromDateTime(_lastFrame!).format(context)}', style: const TextStyle(color: Colors.white38, fontSize: 12)),
+                  const SizedBox(height: 4),
+                  const Text('這是低更新率 LAN 預覽測試，不是 WebRTC 即時串流。', style: TextStyle(color: Colors.white38, fontSize: 11)),
+                ],
+              ),
+            ),
+          ],
         ),
       );
 }

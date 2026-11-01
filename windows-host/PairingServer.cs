@@ -19,6 +19,7 @@ public sealed class PairingServer : IAsyncDisposable
     private byte[]? _sessionToken;
     private string? _clientName;
     private bool _desktopPreviewEnabled;
+    private DateTimeOffset _lastDesktopFrameAt = DateTimeOffset.MinValue;
     private readonly ConcurrentDictionary<string, (int Count, DateTimeOffset Window)> _attempts = new();
 
     public event Action<string>? StatusChanged;
@@ -88,6 +89,9 @@ public sealed class PairingServer : IAsyncDisposable
             {
                 if (!IsAuthorized(context)) return (IResult)Results.Unauthorized();
                 if (!_desktopPreviewEnabled) return (IResult)Results.Json(new { error = "preview_disabled", message = "Windows 主機尚未允許桌面預覽。" }, statusCode: 403);
+                if (DateTimeOffset.UtcNow - _lastDesktopFrameAt < TimeSpan.FromMilliseconds(800))
+                    return (IResult)Results.StatusCode(StatusCodes.Status429TooManyRequests);
+                _lastDesktopFrameAt = DateTimeOffset.UtcNow;
             }
             try { return (IResult)Results.File(DesktopCapture.CaptureJpeg(), "image/jpeg"); }
             catch (Exception ex) { return (IResult)Results.Problem($"桌面擷取失敗：{ex.Message}", statusCode: 500); }

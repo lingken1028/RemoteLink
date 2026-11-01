@@ -9,7 +9,7 @@ The current branch implements an early **LAN pairing + consent-gated desktop pre
 - `windows-host/`: .NET 8 WPF host with visible start/stop controls, a LAN pairing API on TCP 43821, and a separate **允許桌面預覽** consent control.
 - Pairing uses a six-digit, single-use code (five-minute expiry), per-IP attempt throttling, one active client, and a random 256-bit bearer token.
 - Desktop preview is served by an authenticated `GET /desktop.jpg` endpoint. The Windows user must explicitly enable preview after pairing.
-- The capture prototype reads the primary interactive desktop using Windows GDI, scales to at most 1280 px wide, and returns JPEG.
+- The capture prototype reads the primary interactive desktop using Windows GDI, scales to at most 1280 px wide, and returns JPEG. The endpoint limits capture requests to at most one frame per 800 ms.
 - `android-app/`: Flutter client performs pairing, stores the token using secure storage, checks session validity, disconnects, and has a desktop preview page that polls for a new JPEG approximately once per second.
 - `.github/workflows/build.yml`: builds a self-contained Windows x64 publish output and an Android release APK.
 

@@ -1,6 +1,7 @@
 using System.Drawing;
 using System.Drawing.Drawing2D;
 using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
 
 namespace RemoteLink.Host;
 
@@ -8,18 +9,18 @@ public static class DesktopCapture
 {
     private static readonly object Gate = new();
 
-    // Prototype capture: primary interactive desktop only. Windows secure desktop/UAC prompts
-    // are intentionally not captured. This is not a replacement for a production WGC pipeline.
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int index);
+
+    // Prototype capture: primary desktop only. Secure desktop/UAC prompts are not captured.
     public static byte[] CaptureJpeg(int maxWidth = 1280, long quality = 55)
     {
         lock (Gate)
         {
-            var bounds = System.Windows.Forms.Screen.PrimaryScreen?.Bounds
-                ?? throw new InvalidOperationException("找不到主要顯示器。");
-            var sourceWidth = bounds.Width;
-            var sourceHeight = bounds.Height;
+            var sourceWidth = GetSystemMetrics(0);  // SM_CXSCREEN
+            var sourceHeight = GetSystemMetrics(1); // SM_CYSCREEN
             if (sourceWidth <= 0 || sourceHeight <= 0)
-                throw new InvalidOperationException("主要顯示器尺寸無效。");
+                throw new InvalidOperationException("無法取得主要螢幕尺寸。");
 
             var scale = Math.Min(1.0, (double)maxWidth / sourceWidth);
             var width = Math.Max(1, (int)Math.Round(sourceWidth * scale));
@@ -27,7 +28,7 @@ public static class DesktopCapture
 
             using var source = new Bitmap(sourceWidth, sourceHeight, PixelFormat.Format24bppRgb);
             using (var graphics = Graphics.FromImage(source))
-                graphics.CopyFromScreen(bounds.Left, bounds.Top, 0, 0, source.Size, CopyPixelOperation.SourceCopy);
+                graphics.CopyFromScreen(0, 0, 0, 0, source.Size, CopyPixelOperation.SourceCopy);
 
             using var output = new Bitmap(width, height, PixelFormat.Format24bppRgb);
             using (var graphics = Graphics.FromImage(output))

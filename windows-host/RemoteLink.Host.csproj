@@ -8,4 +8,7 @@
     <AssemblyName>RemoteLink.Host</AssemblyName>
     <RootNamespace>RemoteLink.Host</RootNamespace>
   </PropertyGroup>
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
 </Project>

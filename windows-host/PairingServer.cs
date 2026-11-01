@@ -26,6 +26,7 @@ public sealed class PairingServer : IAsyncDisposable
     public DateTimeOffset CodeExpiresAt { get { lock (_gate) return _codeExpiresAt; } }
     public bool IsRunning => _app is not null;
     public bool DesktopPreviewEnabled { get { lock (_gate) return _desktopPreviewEnabled; } }
+    public bool HasPairedClient { get { lock (_gate) return _sessionToken is not null; } }
 
     public void SetDesktopPreviewEnabled(bool enabled)
     {
@@ -105,6 +106,7 @@ public sealed class PairingServer : IAsyncDisposable
                 if (!IsAuthorized(context)) return Results.Unauthorized();
                 _sessionToken = null;
                 _clientName = null;
+                _desktopPreviewEnabled = false;
                 _pairCode = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
                 _codeExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5);
                 StatusChanged?.Invoke("用戶端已中斷；新配對碼有效 5 分鐘。");

@@ -52,31 +52,31 @@ public sealed class PairingServer : IAsyncDisposable
                 _ => (1, now),
                 (_, old) => now - old.Window > TimeSpan.FromMinutes(1) ? (1, now) : (old.Count + 1, old.Window));
             if (attempt.Count > 8)
-                return Results.Json(new { error = "too_many_attempts", message = "嘗試次數過多，請稍後再試。" }, statusCode: 429);
+                return (IResult)Results.Json(new { error = "too_many_attempts", message = "嘗試次數過多，請稍後再試。" }, statusCode: 429);
 
             lock (_gate)
             {
                 if (_sessionToken is not null)
-                    return Results.Conflict(new { error = "already_paired", message = "主機已有連線中的用戶端。" });
+                    return (IResult)Results.Conflict(new { error = "already_paired", message = "主機已有連線中的用戶端。" });
                 if (now > _codeExpiresAt)
-                    return Results.Json(new { error = "code_expired", message = "配對碼已過期，請在主機重新啟動配對。" }, statusCode: 410);
+                    return (IResult)Results.Json(new { error = "code_expired", message = "配對碼已過期，請在主機重新啟動配對。" }, statusCode: 410);
                 var supplied = Encoding.ASCII.GetBytes(request.Code ?? "");
                 var expected = Encoding.ASCII.GetBytes(_pairCode);
                 if (supplied.Length != expected.Length || !CryptographicOperations.FixedTimeEquals(supplied, expected))
-                    return Results.Unauthorized();
+                    return (IResult)Results.Unauthorized();
 
                 _sessionToken = RandomNumberGenerator.GetBytes(32);
                 _clientName = string.IsNullOrWhiteSpace(request.ClientName) ? "Android client" : request.ClientName.Trim()[..Math.Min(request.ClientName.Trim().Length, 64)];
                 _pairCode = "";
                 StatusChanged?.Invoke($"已配對：{_clientName}");
-                return Results.Ok(new { token = Convert.ToBase64String(_sessionToken), hostName = Environment.MachineName });
+                return (IResult)Results.Ok(new { token = Convert.ToBase64String(_sessionToken), hostName = Environment.MachineName });
             }
         });
 
         app.MapGet("/session", (HttpContext context) =>
         {
             lock (_gate)
-                return IsAuthorized(context) ? Results.Ok(new { connected = true, clientName = _clientName }) : Results.Unauthorized();
+                return IsAuthorized(context) ? (IResult)Results.Ok(new { connected = true, clientName = _clientName }) : Results.Unauthorized();
         });
 
         app.MapPost("/session/close", (HttpContext context) =>
@@ -89,7 +89,7 @@ public sealed class PairingServer : IAsyncDisposable
                 _pairCode = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
                 _codeExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5);
                 StatusChanged?.Invoke("用戶端已中斷；新配對碼有效 5 分鐘。");
-                return Results.Ok(new { disconnected = true });
+                return (IResult)Results.Ok(new { disconnected = true });
             }
         });
 

@@ -15,6 +15,7 @@ public partial class MainWindow : Window
         _server.StatusChanged += message => Dispatcher.Invoke(() =>
         {
             StatusText.Text = message;
+            PairCodeText.Text = string.IsNullOrEmpty(_server.PairCode) ? "------" : _server.PairCode;
             PreviewButton.IsEnabled = _server.HasPairedClient;
             if (!_server.DesktopPreviewEnabled) PreviewButton.Content = "允許桌面預覽";
         });

@@ -64,6 +64,8 @@ public sealed class PairingServer : IAsyncDisposable
             if (attempt.Count > 8)
                 return (IResult)Results.Json(new { error = "too_many_attempts", message = "嘗試次數過多，請稍後再試。" }, statusCode: 429);
 
+            string pairedClient;
+            string token;
             lock (_gate)
             {
                 if (_sessionToken is not null)
@@ -78,92 +80,24 @@ public sealed class PairingServer : IAsyncDisposable
                 _sessionToken = RandomNumberGenerator.GetBytes(32);
                 _clientName = string.IsNullOrWhiteSpace(request.ClientName) ? "Android client" : request.ClientName.Trim()[..Math.Min(request.ClientName.Trim().Length, 64)];
                 _pairCode = "";
-                StatusChanged?.Invoke($"已配對：{_clientName}");
-                return (IResult)Results.Ok(new { token = Convert.ToBase64String(_sessionToken), hostName = Environment.MachineName });
+                pairedClient = _clientName;
+                token = Convert.ToBase64String(_sessionToken);
             }
-        });
 
-        app.MapGet("/desktop.jpg", (HttpContext context) =>
+            // Notify WPF only after releasing the state lock to avoid UI/server lock inversion.
+            StatusChanged?.Invoke($"已配對：{pairedClient}");
+            return (IResult)Results.Ok(new { token, hostName = Environment.MachineName });
+        });        app.MapPost("/session/close", (HttpContext context) =>
         {
             lock (_gate)
             {
                 if (!IsAuthorized(context)) return (IResult)Results.Unauthorized();
-                if (!_desktopPreviewEnabled) return (IResult)Results.Json(new { error = "preview_disabled", message = "Windows 主機尚未允許桌面預覽。" }, statusCode: 403);
-                if (DateTimeOffset.UtcNow - _lastDesktopFrameAt < TimeSpan.FromMilliseconds(800))
-                    return (IResult)Results.StatusCode(StatusCodes.Status429TooManyRequests);
-                _lastDesktopFrameAt = DateTimeOffset.UtcNow;
-            }
-            try { return (IResult)Results.File(DesktopCapture.CaptureJpeg(), "image/jpeg"); }
-            catch (Exception ex) { return (IResult)Results.Problem($"桌面擷取失敗：{ex.Message}", statusCode: 500); }
-        });
-
-        app.MapGet("/session", (HttpContext context) =>
-        {
-            lock (_gate)
-                return IsAuthorized(context) ? (IResult)Results.Ok(new { connected = true, clientName = _clientName }) : Results.Unauthorized();
-        });
-
-        app.MapPost("/session/close", (HttpContext context) =>
-        {
-            lock (_gate)
-            {
-                if (!IsAuthorized(context)) return Results.Unauthorized();
                 _sessionToken = null;
                 _clientName = null;
                 _desktopPreviewEnabled = false;
                 _pairCode = RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
                 _codeExpiresAt = DateTimeOffset.UtcNow.AddMinutes(5);
-                StatusChanged?.Invoke("用戶端已中斷；新配對碼有效 5 分鐘。");
-                return (IResult)Results.Ok(new { disconnected = true });
             }
+            StatusChanged?.Invoke("用戶端已中斷；新配對碼有效 5 分鐘。");
+            return (IResult)Results.Ok(new { disconnected = true });
         });
-
-        _app = app;
-        try
-        {
-            await app.StartAsync(cancellationToken);
-            StatusChanged?.Invoke("配對服務已啟動，等待 Android 用戶端配對。");
-        }
-        catch
-        {
-            _app = null;
-            await app.DisposeAsync();
-            throw;
-        }
-    }
-
-    private bool IsAuthorized(HttpContext context)
-    {
-        if (_sessionToken is null) return false;
-        var header = context.Request.Headers.Authorization.ToString();
-        if (!header.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase)) return false;
-        try
-        {
-            var supplied = Convert.FromBase64String(header[7..].Trim());
-            return supplied.Length == _sessionToken.Length && CryptographicOperations.FixedTimeEquals(supplied, _sessionToken);
-        }
-        catch (FormatException) { return false; }
-    }
-
-    public async Task StopAsync()
-    {
-        var app = _app;
-        _app = null;
-        if (app is not null)
-        {
-            await app.StopAsync();
-            await app.DisposeAsync();
-        }
-        lock (_gate)
-        {
-            _sessionToken = null;
-            _clientName = null;
-            _desktopPreviewEnabled = false;
-            _pairCode = "";
-        }
-        StatusChanged?.Invoke("主機已停止，所有工作階段授權已撤銷。");
-    }
-
-    public async ValueTask DisposeAsync() => await StopAsync();
-    private sealed record PairRequest(string? Code, string? ClientName);
-}

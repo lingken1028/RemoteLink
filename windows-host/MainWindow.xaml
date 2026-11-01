@@ -32,12 +32,14 @@
             <TextBlock x:Name="PairCodeText" Grid.Row="1" Text="------" Foreground="#71D5B3" FontSize="38" FontWeight="Bold" Margin="0,5,0,12"/>
             <StackPanel Grid.Row="2">
                 <TextBlock Text="Android 端請輸入本機區域網路 IP 與配對碼。配對成功後，主機會顯示已連線狀態；停止主機會撤銷所有授權。" TextWrapping="Wrap" Foreground="#C5D1DF" FontSize="14" LineHeight="23"/>
-                <TextBlock Text="安全限制：目前僅提供區域網路配對 API，尚未提供桌面影像、滑鼠鍵盤控制或跨網路中繼。請勿將 TCP 43821 轉發到公網。" TextWrapping="Wrap" Foreground="#E8BE82" FontSize="13" LineHeight="21" Margin="0,12,0,0"/>
+                <TextBlock Text="桌面預覽需由 Windows 使用者明確啟用。此版本僅擷取主要螢幕 JPEG 畫面，不支援滑鼠鍵盤控制；請勿將 TCP 43821 轉發到公網。" TextWrapping="Wrap" Foreground="#E8BE82" FontSize="13" LineHeight="21" Margin="0,12,0,0"/>
             </StackPanel>
         </Grid>
         <DockPanel Grid.Row="3" LastChildFill="False">
             <Button x:Name="StartButton" Content="啟動配對服務" Width="150" Height="40" Click="StartButton_Click"
                     Background="#267A68" Foreground="White" BorderThickness="0" FontSize="14"/>
+            <Button x:Name="PreviewButton" Content="允許桌面預覽" Width="150" Height="40" Margin="12,0,0,0"
+                    Click="PreviewButton_Click" Background="#315C83" Foreground="White" BorderThickness="0" FontSize="14" IsEnabled="False"/>
             <Button x:Name="StopButton" Content="停止主機" Width="130" Height="40" Margin="12,0,0,0"
                     Click="StopButton_Click" Background="#873E4A" Foreground="White" BorderThickness="0" FontSize="14" IsEnabled="False"/>
         </DockPanel>

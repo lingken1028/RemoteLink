@@ -18,12 +18,20 @@ public sealed class PairingServer : IAsyncDisposable
     private DateTimeOffset _codeExpiresAt;
     private byte[]? _sessionToken;
     private string? _clientName;
+    private bool _desktopPreviewEnabled;
     private readonly ConcurrentDictionary<string, (int Count, DateTimeOffset Window)> _attempts = new();
 
     public event Action<string>? StatusChanged;
     public string PairCode { get { lock (_gate) return _pairCode; } }
     public DateTimeOffset CodeExpiresAt { get { lock (_gate) return _codeExpiresAt; } }
     public bool IsRunning => _app is not null;
+    public bool DesktopPreviewEnabled { get { lock (_gate) return _desktopPreviewEnabled; } }
+
+    public void SetDesktopPreviewEnabled(bool enabled)
+    {
+        lock (_gate) _desktopPreviewEnabled = enabled;
+        StatusChanged?.Invoke(enabled ? "桌面預覽已啟用；已配對用戶端可查看畫面。" : "桌面預覽已停止。");
+    }
 
     public async Task StartAsync(CancellationToken cancellationToken = default)
     {
@@ -71,6 +79,17 @@ public sealed class PairingServer : IAsyncDisposable
                 StatusChanged?.Invoke($"已配對：{_clientName}");
                 return (IResult)Results.Ok(new { token = Convert.ToBase64String(_sessionToken), hostName = Environment.MachineName });
             }
+        });
+
+        app.MapGet("/desktop.jpg", (HttpContext context) =>
+        {
+            lock (_gate)
+            {
+                if (!IsAuthorized(context)) return (IResult)Results.Unauthorized();
+                if (!_desktopPreviewEnabled) return (IResult)Results.Json(new { error = "preview_disabled", message = "Windows 主機尚未允許桌面預覽。" }, statusCode: 403);
+            }
+            try { return (IResult)Results.File(DesktopCapture.CaptureJpeg(), "image/jpeg"); }
+            catch (Exception ex) { return (IResult)Results.Problem($"桌面擷取失敗：{ex.Message}", statusCode: 500); }
         });
 
         app.MapGet("/session", (HttpContext context) =>
@@ -133,6 +152,7 @@ public sealed class PairingServer : IAsyncDisposable
         {
             _sessionToken = null;
             _clientName = null;
+            _desktopPreviewEnabled = false;
             _pairCode = "";
         }
         StatusChanged?.Invoke("主機已停止，所有工作階段授權已撤銷。");

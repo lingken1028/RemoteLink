@@ -19,3 +19,12 @@ This repository currently contains only a minimal README. A working remote deskt
 
 ## Release criteria
 Do not label the project as a usable release until both installable packages build successfully and a real device-to-device session has been tested.
+
+## First CI build verification
+
+Workflow run #12 completed successfully on 2026-11-01:
+- Windows x64 publish job: success.
+- Android release APK job: success.
+- Artifacts: `RemoteLink-Windows-x64` and `RemoteLink-Android-APK`.
+
+This verifies compilation and packaging only. It does not verify installation or remote-session functionality on a physical Windows 11 PC or Xiaomi 15 Pro.

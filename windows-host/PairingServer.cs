@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Net;
 using System.Security.Cryptography;
+using System.Runtime.InteropServices;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -143,6 +144,55 @@ public sealed class PairingServer : IAsyncDisposable
             return (IResult)Results.Ok(new { disconnected = true });
         });
 
+        app.MapPost("/input/mouse", (MouseRequest request, HttpContext context) =>
+        {
+            lock (_gate)
+            {
+                if (!IsAuthorized(context)) return Results.Unauthorized();
+                if (!_desktopPreviewEnabled) return Results.StatusCode(StatusCodes.Status403Forbidden);
+            }
+
+            var x = Math.Clamp(request.X, 0.0, 1.0);
+            var y = Math.Clamp(request.Y, 0.0, 1.0);
+            var screenWidth = GetSystemMetrics(0);
+            var screenHeight = GetSystemMetrics(1);
+            if (screenWidth <= 0 || screenHeight <= 0)
+                return Results.Problem("無法取得 Windows 螢幕尺寸。", statusCode: 500);
+
+            var px = Math.Clamp((int)Math.Round(x * (screenWidth - 1)), 0, screenWidth - 1);
+            var py = Math.Clamp((int)Math.Round(y * (screenHeight - 1)), 0, screenHeight - 1);
+            if (!SetCursorPos(px, py))
+                return Results.Problem("無法移動 Windows 滑鼠游標。", statusCode: 500);
+
+            switch ((request.Action ?? "").Trim().ToLowerInvariant())
+            {
+                case "move":
+                    break;
+                case "click":
+                    mouse_event(0x0002, 0, 0, 0, UIntPtr.Zero);
+                    mouse_event(0x0004, 0, 0, 0, UIntPtr.Zero);
+                    break;
+                case "rightclick":
+                    mouse_event(0x0008, 0, 0, 0, UIntPtr.Zero);
+                    mouse_event(0x0010, 0, 0, 0, UIntPtr.Zero);
+                    break;
+                default:
+                    return Results.BadRequest(new { error = "unsupported_mouse_action" });
+            }
+
+            return Results.Ok(new { accepted = true, x = px, y = py });
+        });
+
+        app.MapGet("/desktop/info", (HttpContext context) =>
+        {
+            lock (_gate)
+            {
+                if (!IsAuthorized(context)) return Results.Unauthorized();
+                if (!_desktopPreviewEnabled) return Results.StatusCode(StatusCodes.Status403Forbidden);
+            }
+            return Results.Ok(new { width = GetSystemMetrics(0), height = GetSystemMetrics(1) });
+        });
+
         app.MapGet("/desktop.jpg", async (HttpContext context) =>
         {
             lock (_gate)
@@ -214,5 +264,16 @@ public sealed class PairingServer : IAsyncDisposable
 
     public async ValueTask DisposeAsync() => await StopAsync();
 
+    [DllImport("user32.dll")]
+    private static extern int GetSystemMetrics(int nIndex);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetCursorPos(int x, int y);
+
+    [DllImport("user32.dll")]
+    private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
+
     private sealed record PairRequest(string? Code, string? ClientName);
+    private sealed record MouseRequest(string? Action, double X, double Y);
 }

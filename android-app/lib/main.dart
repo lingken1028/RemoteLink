@@ -213,6 +213,44 @@ class _DesktopPreviewPageState extends State<DesktopPreviewPage> {
   Timer? _timer;
   final TransformationController _transformController = TransformationController();
   Uint8List? _frame;
+  bool _controlMode = false;
+  int _screenWidth = 1920;
+  int _screenHeight = 1080;
+  DateTime _lastMouseMove = DateTime.fromMillisecondsSinceEpoch(0);
+
+  Future<void> _loadDesktopInfo() async {
+    try {
+      final response = await http.get(
+        Uri.parse('${widget.baseUrl}/desktop/info'),
+        headers: {'Authorization': 'Bearer ${widget.token}'},
+      ).timeout(const Duration(seconds: 5));
+      if (response.statusCode == 200 && mounted) {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        setState(() {
+          _screenWidth = (data['width'] as num?)?.toInt() ?? 1920;
+          _screenHeight = (data['height'] as num?)?.toInt() ?? 1080;
+        });
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _sendMouse(Offset position, Size size, String action) async {
+    if (size.width <= 0 || size.height <= 0) return;
+    final x = (position.dx / size.width).clamp(0.0, 1.0);
+    final y = (position.dy / size.height).clamp(0.0, 1.0);
+    try {
+      await http.post(
+        Uri.parse('${widget.baseUrl}/input/mouse'),
+        headers: {
+          'Authorization': 'Bearer ${widget.token}',
+          'Content-Type': 'application/json',
+        },
+        body: jsonEncode({'action': action, 'x': x, 'y': y}),
+      ).timeout(const Duration(seconds: 3));
+    } catch (_) {
+      if (mounted) setState(() => _status = '滑鼠指令傳送失敗');
+    }
+  }
 
   void _zoomBy(double factor) {
     final currentScale = _transformController.value.getMaxScaleOnAxis();
@@ -230,6 +268,7 @@ class _DesktopPreviewPageState extends State<DesktopPreviewPage> {
   @override
   void initState() {
     super.initState();
+    _loadDesktopInfo();
     _loadFrame();
     _timer = Timer.periodic(const Duration(seconds: 1), (_) => _loadFrame());
   }
@@ -277,16 +316,21 @@ class _DesktopPreviewPageState extends State<DesktopPreviewPage> {
           title: const Text('Windows 桌面預覽'),
           actions: [
             IconButton(
+              tooltip: _controlMode ? '切換到檢視模式' : '切換到操作模式',
+              onPressed: () => setState(() => _controlMode = !_controlMode),
+              icon: Icon(_controlMode ? Icons.pan_tool_alt : Icons.mouse),
+            ),
+            if (!_controlMode) IconButton(
               tooltip: '縮小',
               onPressed: () => _zoomBy(0.8),
               icon: const Icon(Icons.zoom_out),
             ),
-            IconButton(
+            if (!_controlMode) IconButton(
               tooltip: '放大',
               onPressed: () => _zoomBy(1.25),
               icon: const Icon(Icons.zoom_in),
             ),
-            IconButton(
+            if (!_controlMode) IconButton(
               tooltip: '重設縮放',
               onPressed: _resetZoom,
               icon: const Icon(Icons.fit_screen),
@@ -302,32 +346,53 @@ class _DesktopPreviewPageState extends State<DesktopPreviewPage> {
                 alignment: Alignment.center,
                 child: _frame == null
                     ? const CircularProgressIndicator()
-                    : LayoutBuilder(
-                        builder: (context, constraints) => InteractiveViewer(
-                          transformationController: _transformController,
-                          minScale: 1.0,
-                          maxScale: 4.0,
-                          panEnabled: true,
-                          scaleEnabled: true,
-                          boundaryMargin: const EdgeInsets.all(120),
-                          child: SizedBox(
-                            width: constraints.maxWidth,
-                            height: constraints.maxHeight,
-                            child: Image.memory(
-                              _frame!,
-                              fit: BoxFit.contain,
-                              gaplessPlayback: true,
+                    : _controlMode
+                        ? Center(
+                            child: AspectRatio(
+                              aspectRatio: _screenWidth / _screenHeight,
+                              child: LayoutBuilder(
+                                builder: (context, constraints) => GestureDetector(
+                                  behavior: HitTestBehavior.opaque,
+                                  onTapUp: (details) => _sendMouse(details.localPosition, constraints.biggest, 'click'),
+                                  onLongPressStart: (details) => _sendMouse(details.localPosition, constraints.biggest, 'rightClick'),
+                                  onPanUpdate: (details) {
+                                    final now = DateTime.now();
+                                    if (now.difference(_lastMouseMove).inMilliseconds >= 70) {
+                                      _lastMouseMove = now;
+                                      _sendMouse(details.localPosition, constraints.biggest, 'move');
+                                    }
+                                  },
+                                  child: Image.memory(_frame!, fit: BoxFit.fill, gaplessPlayback: true),
+                                ),
+                              ),
+                            ),
+                          )
+                        : LayoutBuilder(
+                            builder: (context, constraints) => InteractiveViewer(
+                              transformationController: _transformController,
+                              minScale: 1.0,
+                              maxScale: 4.0,
+                              panEnabled: true,
+                              scaleEnabled: true,
+                              boundaryMargin: const EdgeInsets.all(120),
+                              child: SizedBox(
+                                width: constraints.maxWidth,
+                                height: constraints.maxHeight,
+                                child: Image.memory(
+                                  _frame!,
+                                  fit: BoxFit.contain,
+                                  gaplessPlayback: true,
+                                ),
+                              ),
                             ),
                           ),
-                        ),
-                      ),
               ),
             ),
             Padding(
               padding: const EdgeInsets.all(14),
               child: Column(
                 children: [
-                  Text(_status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+                  Text(_controlMode ? '操作模式：點擊＝左鍵 · 長按＝右鍵 · 拖曳＝移動滑鼠' : _status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
                   if (_lastFrame != null)
                     Text('最後影格：${TimeOfDay.fromDateTime(_lastFrame!).format(context)}', style: const TextStyle(color: Colors.white38, fontSize: 12)),
                   const SizedBox(height: 4),

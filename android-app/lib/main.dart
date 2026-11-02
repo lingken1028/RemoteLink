@@ -211,7 +211,18 @@ class DesktopPreviewPage extends StatefulWidget {
 
 class _DesktopPreviewPageState extends State<DesktopPreviewPage> {
   Timer? _timer;
+  final TransformationController _transformController = TransformationController();
   Uint8List? _frame;
+
+  void _zoomBy(double factor) {
+    final currentScale = _transformController.value.getMaxScaleOnAxis();
+    final targetScale = (currentScale * factor).clamp(1.0, 4.0);
+    _transformController.value = Matrix4.identity()..scale(targetScale);
+  }
+
+  void _resetZoom() {
+    _transformController.value = Matrix4.identity();
+  }
   String _status = '正在連接桌面預覽…';
   bool _loading = false;
   DateTime? _lastFrame;
@@ -256,12 +267,32 @@ class _DesktopPreviewPageState extends State<DesktopPreviewPage> {
   @override
   void dispose() {
     _timer?.cancel();
+    _transformController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) => Scaffold(
-        appBar: AppBar(title: const Text('Windows 桌面預覽')),
+        appBar: AppBar(
+          title: const Text('Windows 桌面預覽'),
+          actions: [
+            IconButton(
+              tooltip: '縮小',
+              onPressed: () => _zoomBy(0.8),
+              icon: const Icon(Icons.zoom_out),
+            ),
+            IconButton(
+              tooltip: '放大',
+              onPressed: () => _zoomBy(1.25),
+              icon: const Icon(Icons.zoom_in),
+            ),
+            IconButton(
+              tooltip: '重設縮放',
+              onPressed: _resetZoom,
+              icon: const Icon(Icons.fit_screen),
+            ),
+          ],
+        ),
         body: Column(
           children: [
             Expanded(
@@ -271,7 +302,25 @@ class _DesktopPreviewPageState extends State<DesktopPreviewPage> {
                 alignment: Alignment.center,
                 child: _frame == null
                     ? const CircularProgressIndicator()
-                    : Image.memory(_frame!, fit: BoxFit.contain, gaplessPlayback: true),
+                    : LayoutBuilder(
+                        builder: (context, constraints) => InteractiveViewer(
+                          transformationController: _transformController,
+                          minScale: 1.0,
+                          maxScale: 4.0,
+                          panEnabled: true,
+                          scaleEnabled: true,
+                          boundaryMargin: const EdgeInsets.all(120),
+                          child: SizedBox(
+                            width: constraints.maxWidth,
+                            height: constraints.maxHeight,
+                            child: Image.memory(
+                              _frame!,
+                              fit: BoxFit.contain,
+                              gaplessPlayback: true,
+                            ),
+                          ),
+                        ),
+                      ),
               ),
             ),
             Padding(

@@ -148,8 +148,8 @@ public sealed class PairingServer : IAsyncDisposable
         {
             lock (_gate)
             {
-                if (!IsAuthorized(context)) return Results.Unauthorized();
-                if (!_desktopPreviewEnabled) return Results.StatusCode(StatusCodes.Status403Forbidden);
+                if (!IsAuthorized(context)) return (IResult)Results.Unauthorized();
+                if (!_desktopPreviewEnabled) return (IResult)Results.StatusCode(StatusCodes.Status403Forbidden);
             }
 
             var x = Math.Clamp(request.X, 0.0, 1.0);
@@ -157,12 +157,12 @@ public sealed class PairingServer : IAsyncDisposable
             var screenWidth = GetSystemMetrics(0);
             var screenHeight = GetSystemMetrics(1);
             if (screenWidth <= 0 || screenHeight <= 0)
-                return Results.Problem("無法取得 Windows 螢幕尺寸。", statusCode: 500);
+                return (IResult)Results.Problem("無法取得 Windows 螢幕尺寸。", statusCode: 500);
 
             var px = Math.Clamp((int)Math.Round(x * (screenWidth - 1)), 0, screenWidth - 1);
             var py = Math.Clamp((int)Math.Round(y * (screenHeight - 1)), 0, screenHeight - 1);
             if (!SetCursorPos(px, py))
-                return Results.Problem("無法移動 Windows 滑鼠游標。", statusCode: 500);
+                return (IResult)Results.Problem("無法移動 Windows 滑鼠游標。", statusCode: 500);
 
             switch ((request.Action ?? "").Trim().ToLowerInvariant())
             {
@@ -177,20 +177,20 @@ public sealed class PairingServer : IAsyncDisposable
                     mouse_event(0x0010, 0, 0, 0, UIntPtr.Zero);
                     break;
                 default:
-                    return Results.BadRequest(new { error = "unsupported_mouse_action" });
+                    return (IResult)Results.BadRequest(new { error = "unsupported_mouse_action" });
             }
 
-            return Results.Ok(new { accepted = true, x = px, y = py });
+            return (IResult)Results.Ok(new { accepted = true, x = px, y = py });
         });
 
         app.MapGet("/desktop/info", (HttpContext context) =>
         {
             lock (_gate)
             {
-                if (!IsAuthorized(context)) return Results.Unauthorized();
-                if (!_desktopPreviewEnabled) return Results.StatusCode(StatusCodes.Status403Forbidden);
+                if (!IsAuthorized(context)) return (IResult)Results.Unauthorized();
+                if (!_desktopPreviewEnabled) return (IResult)Results.StatusCode(StatusCodes.Status403Forbidden);
             }
-            return Results.Ok(new { width = GetSystemMetrics(0), height = GetSystemMetrics(1) });
+            return (IResult)Results.Ok(new { width = GetSystemMetrics(0), height = GetSystemMetrics(1) });
         });
 
         app.MapGet("/desktop.jpg", async (HttpContext context) =>

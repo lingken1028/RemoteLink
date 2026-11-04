@@ -1,0 +1,61 @@
+name: RemoteLink builds
+
+on:
+  push:
+    branches: [main, "feature/**"]
+    paths:
+      - ".github/workflows/**"
+      - "windows-host/**"
+      - "android-app/**"
+  pull_request:
+    branches: [main]
+    paths:
+      - ".github/workflows/**"
+      - "windows-host/**"
+      - "android-app/**"
+  workflow_dispatch:
+
+concurrency:
+  group: remotelink-build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  windows-host:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 8.0.x
+      - name: Publish Windows host
+        run: dotnet publish windows-host/RemoteLink.Host.csproj -c Release -r win-x64 --self-contained true -p:PublishSingleFile=true -o artifacts/windows
+      - name: Upload Windows build
+        uses: actions/upload-artifact@v4
+        with:
+          name: RemoteLink-Windows-x64
+          path: artifacts/windows/
+
+  android-client:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+      - name: Generate Android project scaffolding
+        working-directory: android-app
+        run: flutter create --platforms=android --org com.remotelink .
+      - name: Resolve packages
+        working-directory: android-app
+        run: flutter pub get
+      - name: Build Android APK
+        working-directory: android-app
+        run: flutter build apk --release
+      - name: Upload Android APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: RemoteLink-Android-APK
+          path: android-app/build/app/outputs/flutter-apk/app-release.apk

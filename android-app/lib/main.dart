@@ -218,6 +218,8 @@ class _DesktopPreviewPageState extends State<DesktopPreviewPage> {
   int _screenWidth = 1920;
   int _screenHeight = 1080;
   DateTime _lastMouseMove = DateTime.fromMillisecondsSinceEpoch(0);
+  double _lastPointerX = 0.5;
+  double _lastPointerY = 0.5;
 
   Future<void> _loadDesktopInfo() async {
     try {
@@ -239,6 +241,8 @@ class _DesktopPreviewPageState extends State<DesktopPreviewPage> {
     if (size.width <= 0 || size.height <= 0) return;
     final x = (position.dx / size.width).clamp(0.0, 1.0);
     final y = (position.dy / size.height).clamp(0.0, 1.0);
+    _lastPointerX = x;
+    _lastPointerY = y;
     try {
       await http.post(
         Uri.parse('${widget.baseUrl}/input/mouse'),
@@ -321,6 +325,16 @@ class _DesktopPreviewPageState extends State<DesktopPreviewPage> {
               onPressed: () => setState(() => _controlMode = !_controlMode),
               icon: Icon(_controlMode ? Icons.pan_tool_alt : Icons.mouse),
             ),
+            if (_controlMode) IconButton(
+              tooltip: '向上捲動',
+              onPressed: () => _sendMouse(Offset(_lastPointerX, _lastPointerY), const Size(1, 1), 'wheel', delta: 120),
+              icon: const Icon(Icons.keyboard_arrow_up),
+            ),
+            if (_controlMode) IconButton(
+              tooltip: '向下捲動',
+              onPressed: () => _sendMouse(Offset(_lastPointerX, _lastPointerY), const Size(1, 1), 'wheel', delta: -120),
+              icon: const Icon(Icons.keyboard_arrow_down),
+            ),
             if (!_controlMode) IconButton(
               tooltip: '縮小',
               onPressed: () => _zoomBy(0.8),
@@ -401,7 +415,7 @@ class _DesktopPreviewPageState extends State<DesktopPreviewPage> {
               padding: const EdgeInsets.all(14),
               child: Column(
                 children: [
-                  Text(_controlMode ? '操作模式：點擊＝左鍵 · 長按＝右鍵 · 拖曳＝移動滑鼠' : _status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
+                  Text(_controlMode ? '操作模式：點擊＝左鍵 · 長按＝右鍵 · 拖曳＝移動 · 右上箭頭＝滾輪' : _status, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70)),
                   if (_lastFrame != null)
                     Text('最後影格：${TimeOfDay.fromDateTime(_lastFrame!).format(context)}', style: const TextStyle(color: Colors.white38, fontSize: 12)),
                   const SizedBox(height: 4),

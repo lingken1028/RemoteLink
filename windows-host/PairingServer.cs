@@ -176,6 +176,11 @@ public sealed class PairingServer : IAsyncDisposable
                     mouse_event(0x0008, 0, 0, 0, UIntPtr.Zero);
                     mouse_event(0x0010, 0, 0, 0, UIntPtr.Zero);
                     break;
+                case "wheel":
+                    if (request.Delta == 0)
+                        return (IResult)Results.BadRequest(new { error = "wheel_delta_required" });
+                    mouse_event(0x0800, 0, 0, unchecked((uint)request.Delta), UIntPtr.Zero);
+                    break;
                 default:
                     return (IResult)Results.BadRequest(new { error = "unsupported_mouse_action" });
             }
@@ -275,5 +280,5 @@ public sealed class PairingServer : IAsyncDisposable
     private static extern void mouse_event(uint dwFlags, uint dx, uint dy, uint dwData, UIntPtr dwExtraInfo);
 
     private sealed record PairRequest(string? Code, string? ClientName);
-    private sealed record MouseRequest(string? Action, double X, double Y);
+    private sealed record MouseRequest(string? Action, double X, double Y, int Delta = 0);
 }

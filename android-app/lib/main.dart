@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/gestures.dart';
 import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -190,7 +191,7 @@ class _PairScreenState extends State<PairScreen> {
                     const SizedBox(height: 18),
                     Text(_message, textAlign: TextAlign.center, style: const TextStyle(color: Colors.white70, height: 1.5)),
                     const SizedBox(height: 20),
-                    const Text('桌面預覽需先在 Windows 主機按「允許桌面預覽」。目前為區域網路 JPEG 預覽原型，尚未支援即時影音、滑鼠鍵盤控制或跨網路連線。', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 12)),
+                    const Text('桌面預覽需先在 Windows 主機按「允許桌面預覽」。目前支援區域網路 JPEG 預覽及基本滑鼠操作；尚未支援即時影音、鍵盤控制或跨網路連線。', textAlign: TextAlign.center, style: TextStyle(color: Colors.white38, fontSize: 12)),
                   ],
                 ),
               ),
@@ -234,7 +235,7 @@ class _DesktopPreviewPageState extends State<DesktopPreviewPage> {
     } catch (_) {}
   }
 
-  Future<void> _sendMouse(Offset position, Size size, String action) async {
+  Future<void> _sendMouse(Offset position, Size size, String action, {int delta = 0}) async {
     if (size.width <= 0 || size.height <= 0) return;
     final x = (position.dx / size.width).clamp(0.0, 1.0);
     final y = (position.dy / size.height).clamp(0.0, 1.0);
@@ -245,7 +246,7 @@ class _DesktopPreviewPageState extends State<DesktopPreviewPage> {
           'Authorization': 'Bearer ${widget.token}',
           'Content-Type': 'application/json',
         },
-        body: jsonEncode({'action': action, 'x': x, 'y': y}),
+        body: jsonEncode({'action': action, 'x': x, 'y': y, 'delta': delta}),
       ).timeout(const Duration(seconds: 3));
     } catch (_) {
       if (mounted) setState(() => _status = '滑鼠指令傳送失敗');
@@ -351,18 +352,26 @@ class _DesktopPreviewPageState extends State<DesktopPreviewPage> {
                             child: AspectRatio(
                               aspectRatio: _screenWidth / _screenHeight,
                               child: LayoutBuilder(
-                                builder: (context, constraints) => GestureDetector(
-                                  behavior: HitTestBehavior.opaque,
-                                  onTapUp: (details) => _sendMouse(details.localPosition, constraints.biggest, 'click'),
-                                  onLongPressStart: (details) => _sendMouse(details.localPosition, constraints.biggest, 'rightClick'),
-                                  onPanUpdate: (details) {
-                                    final now = DateTime.now();
-                                    if (now.difference(_lastMouseMove).inMilliseconds >= 70) {
-                                      _lastMouseMove = now;
-                                      _sendMouse(details.localPosition, constraints.biggest, 'move');
+                                builder: (context, constraints) => Listener(
+                                  onPointerSignal: (event) {
+                                    if (event is PointerScrollEvent) {
+                                      final delta = event.scrollDelta.dy > 0 ? -120 : 120;
+                                      _sendMouse(event.localPosition, constraints.biggest, 'wheel', delta: delta);
                                     }
                                   },
-                                  child: Image.memory(_frame!, fit: BoxFit.fill, gaplessPlayback: true),
+                                  child: GestureDetector(
+                                    behavior: HitTestBehavior.opaque,
+                                    onTapUp: (details) => _sendMouse(details.localPosition, constraints.biggest, 'click'),
+                                    onLongPressStart: (details) => _sendMouse(details.localPosition, constraints.biggest, 'rightClick'),
+                                    onPanUpdate: (details) {
+                                      final now = DateTime.now();
+                                      if (now.difference(_lastMouseMove).inMilliseconds >= 70) {
+                                        _lastMouseMove = now;
+                                        _sendMouse(details.localPosition, constraints.biggest, 'move');
+                                      }
+                                    },
+                                    child: Image.memory(_frame!, fit: BoxFit.fill, gaplessPlayback: true),
+                                  ),
                                 ),
                               ),
                             ),
